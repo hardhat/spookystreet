@@ -1,3 +1,7 @@
+; Copyright (c) 2026, Dale Wick
+; SPDX-License-Identifier: BSD-3-Clause
+; See LICENSE for the full license text.
+
 ; Export the symbols for
 
   .module img

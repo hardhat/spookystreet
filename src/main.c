@@ -1,3 +1,7 @@
+// Copyright (c) 2026, Dale Wick
+// SPDX-License-Identifier: BSD-3-Clause
+// See LICENSE for the full license text.
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
