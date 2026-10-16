@@ -86,9 +86,8 @@ void initialize_graphics() {
             gfx_tilemap_load(&ctx, mapline, sizeof(mapline), layer, 0, y);
         }
     }
-    gfx_tileset_add_color_tile(&ctx,254,254);
-    gfx_tileset_add_color_tile(&ctx,255,255);
-    for(int x=0;x<20;x++) gfx_tilemap_place(&ctx,254,0,x,7);
+    gfx_tileset_add_color_tile(&ctx,0xB2,254);
+    gfx_tileset_add_color_tile(&ctx,0xB3,255);
     debug_log("Clear sprites");
     clear_sprites();
     for(int y=0;y<title_height;y++) {
@@ -98,7 +97,7 @@ void initialize_graphics() {
             uint8_t value = title_bits[y*(title_width>>3) + (x>>3)];
             for(uint8_t bit=0;bit<8;bit++)
             {
-                gfx_tilemap_place(&ctx, value & mask ? 255 : 254, 0, x+bit, y+4);
+                gfx_tilemap_place(&ctx, value & mask ? 0xB3 : 0xB2, 0, x+bit, y+4);
                 mask <<= 1;
             }
         }
