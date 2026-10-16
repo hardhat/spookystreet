@@ -62,7 +62,7 @@ map/fg.ztm: map/street.tmx
 
 obj/game.rel: src/game.c src/game.h src/main.h # map/tutorial_map.h
 obj/menu.rel: src/menu.c src/menu.h src/game.h
-obj/main.rel: src/main.c src/game.h src/menu.h src/img.h
+obj/main.rel: src/main.c src/game.h src/menu.h src/img.h img/title.xbm
 obj/img.rel: src/img.asm $(IMG) $(MAP)
 
 clean:

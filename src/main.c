@@ -32,6 +32,7 @@
 #include "game.h"
 #include "menu.h"
 #include "img.h"
+#include "../img/title.xbm"
 
 gfx_context ctx;
 uint8_t sprite_count=0;
@@ -75,7 +76,7 @@ void initialize_graphics() {
 
     // Initialize the graphics context
     // Set to tiled 320x240 mode
-    gfx_initialize(ZVB_CTRL_VID_MODE_GFX_320_8BIT, &ctx);
+    gfx_initialize(ZVB_CTRL_VID_MODE_GFX_640_8BIT, &ctx);
 
     char mapline[80];
     memset(mapline,0,sizeof(mapline));
@@ -90,21 +91,30 @@ void initialize_graphics() {
     for(int x=0;x<20;x++) gfx_tilemap_place(&ctx,254,0,x,7);
     debug_log("Clear sprites");
     clear_sprites();
-    for(int x=0;x<5;x++) gfx_tilemap_place(&ctx,255,0,x,7);
+    for(int y=0;y<title_height;y++) {
+        for(int x=0;x<title_width;x+=8)
+        {
+            uint8_t mask = 1; // Start with the highest bit for an 8-bit wide XBM row
+            uint8_t value = title_bits[y*(title_width>>3) + (x>>3)];
+            for(uint8_t bit=0;bit<8;bit++)
+            {
+                gfx_tilemap_place(&ctx, value & mask ? 255 : 254, 0, x+bit, y+4);
+                mask <<= 1;
+            }
+        }
+    }
     
     gfx_tileset_options options0 = {TILESET_COMP_LZ, TILESET_TILES_BASE*256, TILESET_PALETTE_BASE, 0};
     gfx_palette_load(&ctx, tileset_palette, tileset_palette_len, TILESET_PALETTE_BASE);
-    const uint16_t solid_color[2]={0xf800,0x07e0}; // Red and Green
+    const uint16_t solid_color[2]={RGB888_TO_RGB565(255,0,0),RGB888_TO_RGB565(128,0,0)}; // Red and Dark Red
     gfx_palette_load(&ctx,solid_color,4,254);
     const uint16_t black[1]={0x0};
     gfx_palette_load(&ctx,black,2,0);
-    for(int x=5;x<10;x++) gfx_tilemap_place(&ctx,255,0,x,7);
     debug_log("Loading tiles");
     gfx_tileset_load(&ctx, tileset_tiles, tileset_tiles_len, &options0);
 
-    for(int x=10;x<15;x++) gfx_tilemap_place(&ctx,255,0,x,7);
     debug_log("Initalized.");
-    for(int x=15;x<20;x++) gfx_tilemap_place(&ctx,255,0,x,7);
+    gfx_initialize(ZVB_CTRL_VID_MODE_GFX_320_8BIT, &ctx);
 }
 
 void show_map(uint8_t *map,uint8_t width,uint8_t height)
