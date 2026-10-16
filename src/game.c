@@ -1,0 +1,322 @@
+#include <stdio.h>
+#include <string.h>
+
+#include "main.h"
+#include "game.h"
+
+#include <zvb_hardware.h>
+
+#define MAP_WIDTH 80    // In tiles
+#define MAP_HEIGHT 15 // In tiles
+
+#define SCREEN_WIDTH 320  // In pixels
+#define SCREEN_HEIGHT 240 // In pixels
+
+#define TILE_SIZE 16
+
+#define SUBPIXEL 16
+#define PLAYER_HITBOX_INSET 2
+#define PLAYER_MAX_HITBOX_HEIGHT 28
+
+#define MAX_RUN_SPEED 48
+
+#define GROUND_ACCEL 4
+#define GROUND_FRICTION 6
+
+struct Player player;
+
+/// The collision tile types
+#define COLL_EMPTY_TILE 0
+#define COLL_NON_DESTRUCTIBLE_TILE 1
+#define COLL_DESTRUCTABLE_TL 2 // top left corner of destructable tile
+#define COLL_DESTRUCTABLE_TR 3 // top right corner of destructable tile
+#define COLL_DESTRUCTABLE_BL 4 // bottom left corner of destructable tile
+#define COLL_DESTRUCTABLE_BR 5 // bottom right corner of destructable tile
+#define COLL_ITEM_BARREL_TL 6 // top left corner of item barrel
+#define COLL_ITEM_BARREL_TR 7 // top right corner of item barrel
+#define COLL_ITEM_BARREL_BL 8 // bottom left corner of item barrel
+#define COLL_ITEM_BARREL_BR 9 // bottom right corner of item barrel
+
+int16_t x_scroll;
+
+const uint8_t collision_map[256] = {
+    0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, // row 0x00
+    0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, // row 0x10
+    0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, // row 0x20
+    0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, // row 0x30
+
+    0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, // row 0x40
+    0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, // row 0x50
+    0,0,0,0, 1,1,1,1, 2,3,2,3, 2,4,6,7, // row 0x60
+    0,0,0,0, 1,1,1,1, 4,5,4,5, 3,5,8,9, // row 0x70
+
+    2,3,2,3, 2,3,2,3, 2,3,2,3, 2,3,2,3, // row 0x80
+    4,5,4,5, 4,5,4,5, 2,3,2,3, 4,5,4,5, // row 0x90
+    0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, // row 0xa0
+    0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, // row 0xb0
+
+    0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, // row 0xc0
+    0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, // row 0xd0
+    0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, // row 0xe0
+    0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, // row 0xf0
+};
+
+struct Frame {
+    uint8_t base;   // base tile index
+    uint8_t width;  // in tiles
+    uint8_t height;  // in tiles
+};
+
+struct Animation {
+    uint8_t frame_count;  // number of frames in the animation
+    const struct Frame* frames;  // pointer to array of frames in the animation
+    int animation_timer; // timer for animation transitions in ms
+};
+
+const struct Frame idle_frames[] = {
+    { .base = 0xe0, .width = 1, .height = 2 },
+    { .base = 0xe1, .width = 1, .height = 2 },
+};
+
+const struct Frame attack_frames[] = {
+    { .base = 0xc0, .width = 2, .height = 2 },
+    { .base = 0xc2, .width = 2, .height = 2 },
+    { .base = 0xc4, .width = 2, .height = 2 },
+};
+
+const struct Frame walk_frames[] = {
+    { .base = 0xe1, .width = 1, .height = 2 },
+    { .base = 0xe2, .width = 1, .height = 2 },
+    { .base = 0xe3, .width = 1, .height = 2 },
+    { .base = 0xe4, .width = 1, .height = 2 },
+};
+    
+const struct Animation player_animation[] = {
+    [PLAYER_ANIMATION_IDLE] = {
+        .frame_count = 2,
+        .frames = idle_frames,
+        .animation_timer = 256 // example value in ms
+    },
+    [PLAYER_ANIMATION_WALK] = {
+        .frame_count = 4,
+        .frames = walk_frames,
+        .animation_timer = 64 // example value in ms
+    },
+    [PLAYER_ANIMATION_ATTACK] = {
+        .frame_count = 3,
+        .frames = attack_frames,
+        .animation_timer = 128 // example value in ms
+    },
+}; 
+
+bool held_left, held_up, held_right, held_down, held_attack;
+
+static bool tile_solid(uint8_t tx, uint8_t ty) {
+//    uint8_t tile = map_data[ty * MAP_WIDTH + tx];
+//    return tile != 0 && tile != 255;
+    return false;
+}
+
+// Out-of-bounds counts as solid
+static bool rect_collides(int left, int top, int width, int height) {
+    int right = left + width - 1;
+    int bottom = top + height - 1;
+    // if(left < 0 || top < 0 || right >= MAP_WIDTH * TILE_SIZE || bottom >= MAP_HEIGHT * TILE_SIZE) {
+    //     return true;
+    // }
+    // for(uint8_t ty = top / TILE_SIZE; ty <= bottom / TILE_SIZE; ty++) {
+    //     for(uint8_t tx = left / TILE_SIZE; tx <= right / TILE_SIZE; tx++) {
+    //         if(tile_solid(tx, ty)) return true;
+    //     }
+    // }
+    return false;
+}
+
+// Player position is bottom-center of the current frame
+static int hitbox_half_width(void) {
+    const struct Frame* f = &player_animation[player.animation].frames[player.frame];
+    return f->width * (TILE_SIZE / 2) - PLAYER_HITBOX_INSET;
+}
+
+static bool player_collides(int x, int y) {
+    const struct Frame* f = &player_animation[player.animation].frames[player.frame];
+    int half = hitbox_half_width();
+    int height = f->height * TILE_SIZE;
+    // Top row of 3-tile-tall frames is empty space above the head
+    if(height > PLAYER_MAX_HITBOX_HEIGHT) height = PLAYER_MAX_HITBOX_HEIGHT;
+    return rect_collides(x - half, y - height, half * 2, height);
+}
+
+// Step one pixel at a time so the player stops flush against walls
+static void move_player(void) {
+    player.sx += player.vx;
+    int dx = player.sx / SUBPIXEL;
+    player.sx -= dx * SUBPIXEL;
+    int step = dx > 0 ? 1 : -1;
+    for(; dx != 0; dx -= step) {
+        if(player_collides(player.x + step, player.y)) {
+            player.vx = 0;
+            player.sx = 0;
+            break;
+        }
+        player.x += step;
+    }
+    // Sub-pixel motion into a wall would otherwise leave vx nonzero for a few frames
+    if(player.vx != 0 && player_collides(player.x + (player.vx > 0 ? 1 : -1), player.y)) {
+        player.vx = 0;
+        player.sx = 0;
+    }
+
+    player.sy += player.vy;
+    int dy = player.sy / SUBPIXEL;
+    player.sy -= dy * SUBPIXEL;
+    step = dy > 0 ? 1 : -1;
+    for(; dy != 0; dy -= step) {
+        if(player_collides(player.x, player.y + step)) {
+            player.vy = 0;
+            player.sy = 0;
+            break;
+        }
+        player.y += step;
+    }
+
+    player.on_ground = player_collides(player.x, player.y + 1);
+
+    // Set the x_scroll based on player location
+    int16_t target = x_scroll;
+    if(player.x<target+SCREEN_WIDTH/4) {
+        target=player.x-SCREEN_WIDTH/4;
+        if(target<0) target=0; // Underflow
+    } else if(player.x>target+SCREEN_WIDTH*3/4) {
+        target=player.x-SCREEN_WIDTH*3/4;
+        if(target>MAP_WIDTH*16-SCREEN_WIDTH) {
+            target=MAP_WIDTH*16-SCREEN_WIDTH;
+        }
+    }
+    x_scroll=target;
+}
+
+void game_init() {
+    // Initialize player
+    player.x = 32;
+    player.y = 240-64;
+    player.vx = 0;
+    player.vy = 0;
+    player.sx = 0;
+    player.sy = 0;
+    player.on_ground = false;
+    player.attack_timer = 0;
+    held_left = held_right = held_down = held_up = held_attack = false;
+    player.health = 100;
+    player.score = 0;
+    player.frame = 0;
+    player.animation = PLAYER_ANIMATION_IDLE;
+    player.facing_right = true;
+    player.animation_timer = player_animation[player.animation].animation_timer;
+}
+
+static void set_animation(enum PlayerAnimation animation) {
+    if(player.animation != animation) {
+        player.animation = animation;
+        player.frame = 0;
+        player.animation_timer = player_animation[animation].animation_timer;
+    }
+}
+
+static int update_velocity(int velocity, int direction) {
+    int target = direction * MAX_RUN_SPEED;
+    int change = direction != 0 ? GROUND_ACCEL : GROUND_FRICTION;
+
+    if(velocity < target) {
+        velocity += change;
+        if(velocity > target) velocity = target;
+    } else if(velocity > target) {
+        velocity -= change;
+        if(velocity < target) velocity = target;
+    }
+    return velocity;
+}
+
+void game_update() {
+    int horizontal = held_right - held_left;
+    int vertical = held_down - held_up;
+
+    player.vx = update_velocity(player.vx, horizontal);
+    player.vy = update_velocity(player.vy, vertical);
+    if(horizontal != 0) player.facing_right = horizontal > 0;
+
+    move_player();
+
+    if(player.attack_timer) {
+        set_animation(PLAYER_ANIMATION_ATTACK);
+    } else if(player.vx != 0 || player.vy != 0) {
+        set_animation(PLAYER_ANIMATION_WALK);
+    } else {
+        set_animation(PLAYER_ANIMATION_IDLE);
+    }
+
+    if(player.animation_timer > 0) {
+        player.animation_timer-=16; // assuming a 60 FPS update rate, ~16ms per frame
+        if(player.animation_timer <= 0) {
+            player.animation_timer = player_animation[player.animation].animation_timer;
+            player.frame = (player.frame + 1) % player_animation[player.animation].frame_count;
+        }
+    }
+}
+
+void game_render() {
+    reset_sprite();
+    // Render game graphics here (anchor in bottom center)
+    const struct Frame* f = &player_animation[player.animation].frames[player.frame];
+    bool flip = !player.facing_right;
+    int left = player.x - x_scroll - f->width * 8; // Calculate left position based on sprite width
+    int top = player.y - f->height * 16; // Calculate top position based on sprite height
+    for(uint8_t row = 0; row < f->height; row++) {
+        for(uint8_t col = 0; col < f->width; col++) {
+            // Tilesheet rows are 16 tiles wide
+            uint8_t tile = f->base + (row << 4) + (flip ? f->width - 1 - col : col);
+            add_sprite(left + (col << 4), top + (row << 4), tile, flip ? SPRITE_FLAG_FLIP_X : 0);
+        }
+    }
+    // Add HUD sprites:
+    for(uint8_t i=0;i<4;i++) {
+        add_sprite((uint16_t)i<<4,240-16,'@',0);
+    }
+    char buf[16];
+    sprintf(buf,"%05d",player.score);
+    for(uint8_t i=0;i<strlen(buf);i++) {
+        add_sprite(320+((i-5)<<4),240-16,buf[i],0);
+    }
+    render_sprites();
+#ifdef __SDCC_VERSION_MAJOR
+    zvb_ctrl_l0_scr_x_low = x_scroll & 0xFF;
+    zvb_ctrl_l0_scr_x_high = (x_scroll >> 8) & 0xFF;
+    zvb_ctrl_l1_scr_x_low = x_scroll & 0xFF;
+    zvb_ctrl_l1_scr_x_high = (x_scroll >> 8) & 0xFF;
+#endif
+
+}
+
+void game_handle_input(uint8_t input, bool down) {
+    switch(input) {
+        case INPUT_DOWN:
+            held_down = down;
+            held_up = false;
+            break;
+        case INPUT_LEFT:
+            held_left = down;
+            held_right = false;
+            break;
+        case INPUT_RIGHT:
+            held_right = down;
+            held_left = false;
+            break;
+        case INPUT_UP:
+            held_up = down;
+            held_down = false;
+            break;
+        case INPUT_A:
+            held_attack = down;
+            break;
+    }
+}
