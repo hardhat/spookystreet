@@ -7,11 +7,12 @@
 
 #include "main.h"
 #include "game.h"
+#include "img.h"
 
 #include <zvb_hardware.h>
 
-#define MAP_WIDTH 80    // In tiles
-#define MAP_HEIGHT 15 // In tiles
+#define MAP_WIDTH STREET_MAP_WIDTH    // In tiles
+#define MAP_HEIGHT STREET_MAP_HEIGHT // In tiles
 
 #define SCREEN_WIDTH 320  // In pixels
 #define SCREEN_HEIGHT 240 // In pixels
@@ -40,6 +41,14 @@ struct Player player;
 #define COLL_ITEM_BARREL_TR 7 // top right corner of item barrel
 #define COLL_ITEM_BARREL_BL 8 // bottom left corner of item barrel
 #define COLL_ITEM_BARREL_BR 9 // bottom right corner of item barrel
+#define COLL_ITEM_PUMPKIN_TL 10 // top left corner of item pumpkin
+#define COLL_ITEM_PUMPKIN_TR 11 // top right corner of item pumpkin
+#define COLL_ITEM_PUMPKIN_BL 12 // bottom left corner of item pumpkin
+#define COLL_ITEM_PUMPKIN_BR 13 // bottom right corner of item pumpkin
+#define COLL_ITEM_STREET_LIGHT_T 14 // Top
+#define COLL_ITEM_STREET_LIGHT_U 15 // Middle upper part of the street light
+#define COLL_ITEM_STREET_LIGHT_L 16 // Middle lower part of the street light
+#define COLL_ITEM_STREET_LIGHT_B 17 // Bottom part of the street light
 
 int16_t x_scroll;
 
@@ -54,15 +63,15 @@ const uint8_t collision_map[256] = {
     0,0,0,0, 1,1,1,1, 2,3,2,3, 2,4,6,7, // row 0x60
     0,0,0,0, 1,1,1,1, 4,5,4,5, 3,5,8,9, // row 0x70
 
-    2,3,2,3, 2,3,2,3, 2,3,2,3, 2,3,2,3, // row 0x80
-    4,5,4,5, 4,5,4,5, 2,3,2,3, 4,5,4,5, // row 0x90
-    0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, // row 0xa0
-    0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, // row 0xb0
+    2,3,2,3,    2,3,2,3,     2,3,1,1, 1,1,1,1, // row 0x80
+    4,5,4,5,    4,5,4,5,     2,3,1,1, 1,1,1,1, // row 0x90
+    10,11,0,0,  10,11,10,11, 0,0,0,0, 0,0,0,0, // row 0xa0
+    12,13,14,0, 12,13,12,13, 0,0,0,0, 0,0,0,0, // row 0xb0
 
-    0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, // row 0xc0
-    0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, // row 0xd0
-    0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, // row 0xe0
-    0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, // row 0xf0
+    0,0,0,0, 0,0,1,1, 1,1,1,1, 1,1,0,14, // row 0xc0
+    0,0,0,0, 0,0,1,1, 1,1,1,1, 1,1,14,15, // row 0xd0
+    0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,16, // row 0xe0
+    0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,17, // row 0xf0
 };
 
 struct Frame {
@@ -116,23 +125,23 @@ const struct Animation player_animation[] = {
 bool held_left, held_up, held_right, held_down, held_attack;
 
 static bool tile_solid(uint8_t tx, uint8_t ty) {
-//    uint8_t tile = map_data[ty * MAP_WIDTH + tx];
-//    return tile != 0 && tile != 255;
-    return false;
+    int index = ty * MAP_WIDTH + tx;
+    return collision_map[street_bg_tilemap[index]] != COLL_EMPTY_TILE ||
+           collision_map[street_fg_map[index]] != COLL_EMPTY_TILE;
 }
 
 // Out-of-bounds counts as solid
 static bool rect_collides(int left, int top, int width, int height) {
     int right = left + width - 1;
     int bottom = top + height - 1;
-    // if(left < 0 || top < 0 || right >= MAP_WIDTH * TILE_SIZE || bottom >= MAP_HEIGHT * TILE_SIZE) {
-    //     return true;
-    // }
-    // for(uint8_t ty = top / TILE_SIZE; ty <= bottom / TILE_SIZE; ty++) {
-    //     for(uint8_t tx = left / TILE_SIZE; tx <= right / TILE_SIZE; tx++) {
-    //         if(tile_solid(tx, ty)) return true;
-    //     }
-    // }
+    if(left < 0 || top < 0 || right >= MAP_WIDTH * TILE_SIZE || bottom >= MAP_HEIGHT * TILE_SIZE) {
+        return true;
+    }
+    for(uint8_t ty = top / TILE_SIZE; ty <= bottom / TILE_SIZE; ty++) {
+        for(uint8_t tx = left / TILE_SIZE; tx <= right / TILE_SIZE; tx++) {
+            if(tile_solid(tx, ty)) return true;
+        }
+    }
     return false;
 }
 
@@ -203,7 +212,7 @@ static void move_player(void) {
 void game_init() {
     // Initialize player
     player.x = 32;
-    player.y = 240-64;
+    player.y = 240-32;
     player.vx = 0;
     player.vy = 0;
     player.sx = 0;
