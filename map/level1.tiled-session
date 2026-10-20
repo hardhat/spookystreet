@@ -1,10 +1,20 @@
 {
-    "activeFile": "",
+    "activeFile": "street.tmx",
     "expandedProjectPaths": [
+        "."
     ],
     "fileStates": {
         "main.tsx": {
-            "scaleInDock": 1
+            "scaleInDock": 1,
+            "scaleInEditor": 1
+        },
+        "street.tmx": {
+            "scale": 3,
+            "selectedLayer": 2,
+            "viewCenter": {
+                "x": 96.49999999999997,
+                "y": 112.49999999999999
+            }
         }
     },
     "last.imagePath": "C:/Users/dalewick/OneDrive/Documents/GitHub/zeal/spookystreet/img",
@@ -14,9 +24,13 @@
     "map.tileWidth": 16,
     "map.width": 80,
     "openFiles": [
+        "main.tsx",
+        "street.tmx"
     ],
     "project": "level1.tiled-project",
     "recentFiles": [
+        "main.tsx",
+        "street.tmx"
     ],
     "tileset.lastUsedFormat": "tsx",
     "tileset.tileSize": {
