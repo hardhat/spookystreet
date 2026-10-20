@@ -125,6 +125,14 @@ void show_map(uint8_t *map,uint8_t width,uint8_t height)
     }
 }
 
+void update_fg_tiles(uint8_t x, uint8_t y, uint8_t width, uint8_t height)
+{
+    for(uint8_t row=y;row<y+height;row++)
+    {
+        gfx_tilemap_load(&ctx, &street_fg_map[row*STREET_MAP_WIDTH+x], width, 1, x, row);
+    }
+}
+
 void show_map1(uint8_t *map,uint8_t width,uint8_t height)
 {
     uint8_t layer=1;

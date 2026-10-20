@@ -28,6 +28,15 @@
 #define GROUND_ACCEL 4
 #define GROUND_FRICTION 6
 
+#define MAX_HEALTH 100
+#define MAX_MP 100
+#define BARREL_MP 25
+#define ITEM_SCORE 50
+#define ITEM_DURABILITY 4 // hits to destroy an item
+
+#define ATTACK_FRAMES 24 // 3 attack frames * 128 ms at 16 ms per update
+#define ATTACK_REACH 24  // pixels in front of the player's center
+
 struct Player player;
 
 /// The collision tile types
@@ -49,8 +58,7 @@ struct Player player;
 #define COLL_ITEM_STREET_LIGHT_U 15 // Middle upper part of the street light
 #define COLL_ITEM_STREET_LIGHT_L 16 // Middle lower part of the street light
 #define COLL_ITEM_STREET_LIGHT_B 17 // Bottom part of the street light
-
-int16_t x_scroll;
+#define COLL_ITEM_PUMPKIN_1x1 18 // 1x1 pumpkin item
 
 const uint8_t collision_map[256] = {
     0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, // row 0x00
@@ -60,19 +68,24 @@ const uint8_t collision_map[256] = {
 
     0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, // row 0x40
     0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, // row 0x50
-    0,0,0,0, 1,1,1,1, 2,3,2,3, 2,4,6,7, // row 0x60
-    0,0,0,0, 1,1,1,1, 4,5,4,5, 3,5,8,9, // row 0x70
+    0,0,0,0, 1,1,1,1, 2,3,2,3, 2,3,6,7, // row 0x60
+    0,0,0,0, 1,1,1,1, 4,5,4,5, 4,5,8,9, // row 0x70
 
     2,3,2,3,    2,3,2,3,     2,3,1,1, 1,1,1,1, // row 0x80
     4,5,4,5,    4,5,4,5,     2,3,1,1, 1,1,1,1, // row 0x90
     10,11,0,0,  10,11,10,11, 0,0,0,0, 0,0,0,0, // row 0xa0
-    12,13,14,0, 12,13,12,13, 0,0,0,0, 0,0,0,0, // row 0xb0
+    12,13,18,0, 12,13,12,13, 0,0,0,0, 0,0,0,0, // row 0xb0
 
     0,0,0,0, 0,0,1,1, 1,1,1,1, 1,1,0,14, // row 0xc0
     0,0,0,0, 0,0,1,1, 1,1,1,1, 1,1,14,15, // row 0xd0
     0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,16, // row 0xe0
     0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,17, // row 0xf0
 };
+
+// Remaining hits per item, stored at the item's top-left tile
+uint8_t item_durability[MAP_WIDTH*MAP_HEIGHT];
+
+int16_t x_scroll;
 
 struct Frame {
     uint8_t base;   // base tile index
@@ -209,7 +222,95 @@ static void move_player(void) {
     x_scroll=target;
 }
 
+static uint8_t fg_coll(int tx, int ty) {
+    return collision_map[street_fg_map[ty * MAP_WIDTH + tx]];
+}
+
+static bool is_light_body(uint8_t type) {
+    return type > COLL_ITEM_STREET_LIGHT_T && type <= COLL_ITEM_STREET_LIGHT_B;
+}
+
+// Finds the item containing a foreground tile; origin is its top-left tile
+static bool find_item(int tx, int ty, int *ox, int *oy, int *w, int *h) {
+    uint8_t type = fg_coll(tx, ty);
+    if(type == COLL_ITEM_PUMPKIN_1x1) {
+        *ox = tx; *oy = ty; *w = 1; *h = 1;
+        return true;
+    }
+    if(type >= COLL_ITEM_STREET_LIGHT_T && type <= COLL_ITEM_STREET_LIGHT_B) {
+        int top = ty;
+        while(top > 0 && is_light_body(fg_coll(tx, top))) top--;
+        if(fg_coll(tx, top) != COLL_ITEM_STREET_LIGHT_T) return false;
+        int bottom = top;
+        while(bottom + 1 < MAP_HEIGHT && is_light_body(fg_coll(tx, bottom + 1))) bottom++;
+        *ox = tx; *oy = top; *w = 1; *h = bottom - top + 1;
+        return true;
+    }
+    if(type < COLL_DESTRUCTABLE_TL || type > COLL_ITEM_PUMPKIN_BR) return false;
+    // 2x2 items are laid out TL, TR, BL, BR from a base type of 2, 6 or 10
+    uint8_t part = (type - COLL_DESTRUCTABLE_TL) & 3;
+    *ox = tx - (part & 1);
+    *oy = ty - (part >> 1);
+    if(*ox < 0 || *oy < 0 || fg_coll(*ox, *oy) != type - part) return false;
+    *w = 2; *h = 2;
+    return true;
+}
+
+// Returns true if an item was hit
+static bool hit_item(int tx, int ty) {
+    int ox, oy, w, h;
+    if(!find_item(tx, ty, &ox, &oy, &w, &h)) return false;
+    uint8_t *durability = &item_durability[oy * MAP_WIDTH + ox];
+    if(--*durability) return true;
+
+    switch(fg_coll(ox, oy)) {
+        case COLL_ITEM_BARREL_TL:
+            player.mp += BARREL_MP;
+            if(player.mp > MAX_MP) player.mp = MAX_MP;
+            break;
+        case COLL_ITEM_PUMPKIN_TL:
+        case COLL_ITEM_PUMPKIN_1x1:
+            player.health += MAX_HEALTH / 4;
+            if(player.health > MAX_HEALTH) player.health = MAX_HEALTH;
+            break;
+        default:
+            player.score += ITEM_SCORE;
+            break;
+    }
+
+    for(int y = oy; y < oy + h; y++) {
+        for(int x = ox; x < ox + w; x++) {
+            street_fg_map[y * MAP_WIDTH + x] = 0;
+        }
+    }
+    update_fg_tiles(ox, oy, w, h);
+    return true;
+}
+
+// Hits the nearest item in front of the player, using the bottom of the sprite as the strike zone
+static void player_attack(void) {
+    int x0 = player.facing_right ? player.x : player.x - ATTACK_REACH;
+    int x1 = x0 + ATTACK_REACH - 1;
+    int y0 = player.y - PLAYER_MAX_HITBOX_HEIGHT;
+    int y1 = player.y - 1;
+    if(x0 < 0) x0 = 0;
+    if(y0 < 0) y0 = 0;
+    if(x1 >= MAP_WIDTH * TILE_SIZE) x1 = MAP_WIDTH * TILE_SIZE - 1;
+    if(y1 >= MAP_HEIGHT * TILE_SIZE) y1 = MAP_HEIGHT * TILE_SIZE - 1;
+
+    int tx0 = x0 / TILE_SIZE, tx1 = x1 / TILE_SIZE;
+    int ty0 = y0 / TILE_SIZE, ty1 = y1 / TILE_SIZE;
+    int step = player.facing_right ? 1 : -1;
+    int tx = player.facing_right ? tx0 : tx1;
+    for(int i = tx1 - tx0; i >= 0; i--, tx += step) {
+        for(int ty = ty0; ty <= ty1; ty++) {
+            if(hit_item(tx, ty)) return;
+        }
+    }
+}
+
 void game_init() {
+    memset(item_durability, ITEM_DURABILITY, sizeof(item_durability));
     // Initialize player
     player.x = 32;
     player.y = 240-32;
@@ -220,7 +321,8 @@ void game_init() {
     player.on_ground = false;
     player.attack_timer = 0;
     held_left = held_right = held_down = held_up = held_attack = false;
-    player.health = 100;
+    player.health = MAX_HEALTH;
+    player.mp = 0;
     player.score = 0;
     player.frame = 0;
     player.animation = PLAYER_ANIMATION_IDLE;
@@ -260,6 +362,7 @@ void game_update() {
 
     move_player();
 
+    if(player.attack_timer) player.attack_timer--;
     if(player.attack_timer) {
         set_animation(PLAYER_ANIMATION_ATTACK);
     } else if(player.vx != 0 || player.vy != 0) {
@@ -330,6 +433,10 @@ void game_handle_input(uint8_t input, bool down) {
             break;
         case INPUT_A:
             held_attack = down;
+            if(down && !player.attack_timer) {
+                player.attack_timer = ATTACK_FRAMES;
+                player_attack();
+            }
             break;
     }
 }

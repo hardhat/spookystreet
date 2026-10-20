@@ -24,6 +24,7 @@ struct Player {
     bool facing_right;
     enum PlayerAnimation animation;
     int health;
+    int mp; // magic points
     int score;
     int frame; // current frame of the animation
     int animation_timer; // timer for animation transitions

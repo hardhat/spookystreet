@@ -52,6 +52,8 @@ void clear_sprites(void);
 void add_sprite(uint16_t x, uint16_t y, uint8_t sprite, uint16_t flags);
 /// Show map on layer 0
 void show_map(uint8_t *map,uint8_t width,uint8_t height);
+/// Redraw a rectangle of street_fg_map (in tiles) on layer 1
+void update_fg_tiles(uint8_t x, uint8_t y, uint8_t width, uint8_t height);
 /// @brief Show tutorial map
 /// @param  none
 void show_tutorial_map(void);
