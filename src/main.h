@@ -41,6 +41,8 @@ extern enum GameState current_state;
 #define STREET_MAP_HEIGHT 15
 extern uint8_t street_fg_map[STREET_MAP_WIDTH*STREET_MAP_HEIGHT];
 
+#define PARTICLE_DAMAGE 0x22
+
 void set_game_state(enum GameState new_state);
 /// Fill off-screen sprites table to their default state
 void reset_sprite(void);

@@ -29,6 +29,17 @@ struct Player {
     int frame; // current frame of the animation
     int animation_timer; // timer for animation transitions
 };
+
+struct Particle {
+    bool active; // whether the particle is active
+    uint8_t type; // type of the particle (e.g., smoke, spark)
+    int16_t x;
+    int16_t y;
+    int8_t sx, sy; // subpixel remainder of position
+    int16_t vx, vy; // velocity in subpixels (1/16 pixel) per frame
+    int16_t lifetime_timer; // time left in ms for the particle
+};
+
 void game_init();
 void game_update();
 void game_render();

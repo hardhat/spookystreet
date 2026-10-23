@@ -4,6 +4,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 #include "main.h"
 #include "game.h"
@@ -32,12 +33,18 @@
 #define MAX_MP 100
 #define BARREL_MP 25
 #define ITEM_SCORE 50
+#define TILE_ITEM_SCORE 0x2A
 #define ITEM_DURABILITY 4 // hits to destroy an item
+
+#define TILE_HEART 0x40
 
 #define ATTACK_FRAMES 24 // 3 attack frames * 128 ms at 16 ms per update
 #define ATTACK_REACH 24  // pixels in front of the player's center
 
 struct Player player;
+
+#define MAX_PARTICLES 16
+struct Particle particles[MAX_PARTICLES];
 
 /// The collision tile types
 #define COLL_EMPTY_TILE 0
@@ -136,6 +143,33 @@ const struct Animation player_animation[] = {
 }; 
 
 bool held_left, held_up, held_right, held_down, held_attack;
+
+
+void spawn_particle(int x, int y, int16_t vx, int16_t vy, uint8_t type, uint16_t lifetime) {
+    for(uint8_t i = 0; i < MAX_PARTICLES; i++) {
+        if(!particles[i].active) {
+            particles[i].active = true;
+            particles[i].x = x;
+            particles[i].y = y;
+            particles[i].sx = 0;
+            particles[i].sy = 0;
+            particles[i].vx = vx;
+            particles[i].vy = vy;
+            particles[i].type = type;
+            particles[i].lifetime_timer = lifetime;
+            break;
+        }
+    }
+}
+
+void spawn_damage(int16_t x, int16_t y) {
+    // Make 3 damage particles
+    for(int i = 0; i < 3; i++) {
+        int16_t vx = (rand() % 5 - 2) << 4; // random velocity between -2 and 2 subpixels/frame
+        int16_t vy = (rand() % 5 - 2) << 4; // random velocity between -2 and 2 subpixels/frame
+        spawn_particle(x, y, vx, vy, PARTICLE_DAMAGE, 500); // 500ms lifetime
+    }
+}
 
 static bool tile_solid(uint8_t tx, uint8_t ty) {
     int index = ty * MAP_WIDTH + tx;
@@ -261,20 +295,25 @@ static bool hit_item(int tx, int ty) {
     int ox, oy, w, h;
     if(!find_item(tx, ty, &ox, &oy, &w, &h)) return false;
     uint8_t *durability = &item_durability[oy * MAP_WIDTH + ox];
-    if(--*durability) return true;
-
+    if(--*durability) {
+        spawn_damage(tx*TILE_SIZE, ty*TILE_SIZE);
+        return true;
+    }
     switch(fg_coll(ox, oy)) {
         case COLL_ITEM_BARREL_TL:
             player.mp += BARREL_MP;
             if(player.mp > MAX_MP) player.mp = MAX_MP;
+            spawn_particle(tx<<4, ty<<4,0,-18,TILE_ITEM_SCORE-1,500);
             break;
         case COLL_ITEM_PUMPKIN_TL:
         case COLL_ITEM_PUMPKIN_1x1:
+            spawn_particle(tx<<4, ty<<4,0,-18,TILE_HEART,500);
             player.health += MAX_HEALTH / 4;
             if(player.health > MAX_HEALTH) player.health = MAX_HEALTH;
             break;
         default:
             player.score += ITEM_SCORE;
+            spawn_particle(tx<<4, ty<<4,0,-18,TILE_ITEM_SCORE,500);
             break;
     }
 
@@ -351,6 +390,36 @@ static int update_velocity(int velocity, int direction) {
     }
     return velocity;
 }
+void update_particles() {
+    for(uint8_t i = 0; i < MAX_PARTICLES; i++) {
+        if(particles[i].active) {
+            particles[i].sx += particles[i].vx;
+            particles[i].sy += particles[i].vy;
+            while(particles[i].sx >= 16) {
+                particles[i].sx -= 16;
+                particles[i].x++;
+            }
+            while(particles[i].sx < 0) {
+                particles[i].sx += 16;
+                particles[i].x--;
+            }
+            while(particles[i].sy >= 16) {
+                particles[i].sy -= 16;
+                particles[i].y++;
+            }
+            while(particles[i].sy < 0) {
+                particles[i].sy += 16;
+                particles[i].y--;
+            }
+            if(particles[i].lifetime_timer > 0) {
+                particles[i].lifetime_timer -= 16; // assuming a 60 FPS update rate, ~16ms per frame
+                if(particles[i].lifetime_timer <= 0) {
+                    particles[i].active = false;
+                }
+            }
+        }
+    }
+}
 
 void game_update() {
     int horizontal = held_right - held_left;
@@ -378,6 +447,7 @@ void game_update() {
             player.frame = (player.frame + 1) % player_animation[player.animation].frame_count;
         }
     }
+    update_particles();
 }
 
 void game_render() {
@@ -402,6 +472,13 @@ void game_render() {
     sprintf(buf,"%05d",player.score);
     for(uint8_t i=0;i<strlen(buf);i++) {
         add_sprite(320+((i-5)<<4),240-16,buf[i],0);
+    }
+
+    // Render particles
+    for(uint8_t i = 0; i < MAX_PARTICLES; i++) {
+        if(particles[i].active) {
+            add_sprite(particles[i].x - x_scroll, particles[i].y, particles[i].type, 0);
+        }
     }
     render_sprites();
 #ifdef __SDCC_VERSION_MAJOR
