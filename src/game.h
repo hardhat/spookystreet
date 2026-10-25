@@ -53,6 +53,10 @@ struct Enemy {
     int frame; // current frame of the animation
     int animation_timer; // timer for animation transitions
     int health;
+    bool facing_right;
+    uint8_t cooldown; // frames until this enemy can attack again
+    uint8_t backoff_timer; // frames left retreating after an attack
+    uint8_t attack_timer; // frames left for the attack animation
 };
 
 struct Particle {

@@ -239,6 +239,62 @@ uint16_t wave_timer;    // Timer for tracking spawn timing of the current wave
 #define MAX_ENEMIES 8
 struct Enemy enemies[MAX_ENEMIES];
 
+#define FRAME_MS 16 // one update at 60 FPS
+#define WAVE_SPAWN_INTERVAL 700 // ms between enemies of a wave
+#define ENEMY_SCORE 100
+#define ENEMY_DEADZONE 3 // pixels; stops enemies jittering around the player
+#define ENEMY_ATTACK_FRAMES 16
+#define ENEMY_ART_FACES_LEFT true
+#define PLAYER_ATTACK_DAMAGE 10
+
+struct EnemyDef {
+    const struct Animation* animation;
+    uint8_t speed;         // subpixels per frame (the player's top speed is MAX_RUN_SPEED)
+    uint8_t damage;
+    uint8_t health;
+    uint8_t half_width;    // hitbox, centered on the enemy position
+    uint8_t hitbox_height; // hitbox, measured up from the enemy position
+    uint8_t cooldown;      // frames between attacks
+    uint8_t backoff;       // frames spent retreating after an attack
+    bool ignore_collision; // moves through walls and items
+};
+
+const struct EnemyDef enemy_defs[] = {
+    [ENEMY_TYPE_RAT] = {
+        .animation = rat_animation,
+        .speed = MAX_RUN_SPEED * 5 / 6,
+        .damage = 10,
+        .health = 20,
+        .half_width = 14,
+        .hitbox_height = 8,
+        .cooldown = 45,
+        .backoff = 30,
+        .ignore_collision = false,
+    },
+    [ENEMY_TYPE_GHOST] = {
+        .animation = ghost_animation,
+        .speed = MAX_RUN_SPEED / 2,
+        .damage = 15,
+        .health = 30,
+        .half_width = 14,
+        .hitbox_height = 16,
+        .cooldown = 1000 / FRAME_MS,
+        .backoff = 0,
+        .ignore_collision = true,
+    },
+    [ENEMY_TYPE_HAND] = {
+        .animation = hand_animation,
+        .speed = MAX_RUN_SPEED / 2,
+        .damage = 20,
+        .health = 100,
+        .half_width = 28,
+        .hitbox_height = 8, // only the fingertips at the bottom of the sprite can hurt
+        .cooldown = 60,
+        .backoff = 40,
+        .ignore_collision = false,
+    },
+};
+
 bool held_left, held_up, held_right, held_down, held_attack;
 
 
@@ -295,12 +351,17 @@ static int hitbox_half_width(void) {
     return f->width * (TILE_SIZE / 2) - PLAYER_HITBOX_INSET;
 }
 
-static bool player_collides(int x, int y) {
+static int player_hitbox_height(void) {
     const struct Frame* f = &player_animation[player.animation].frames[player.frame];
-    int half = hitbox_half_width();
     int height = f->height * TILE_SIZE;
     // Top row of 3-tile-tall frames is empty space above the head
     if(height > PLAYER_MAX_HITBOX_HEIGHT) height = PLAYER_MAX_HITBOX_HEIGHT;
+    return height;
+}
+
+static bool player_collides(int x, int y) {
+    int half = hitbox_half_width();
+    int height = player_hitbox_height();
     return rect_collides(x - half, y - height, half * 2, height);
 }
 
@@ -351,6 +412,206 @@ static void move_player(void) {
         }
     }
     x_scroll=target;
+}
+
+static bool enemy_collides(const struct EnemyDef *def, int x, int y) {
+    if(def->ignore_collision) {
+        // Only keep floating enemies inside the map
+        return x - def->half_width < 0 || x + def->half_width > MAP_WIDTH * TILE_SIZE ||
+               y - def->hitbox_height < 0 || y > MAP_HEIGHT * TILE_SIZE;
+    }
+    return rect_collides(x - def->half_width, y - def->hitbox_height, def->half_width * 2, def->hitbox_height);
+}
+
+static void set_enemy_animation(struct Enemy *e, enum EnemyAnimation animation) {
+    if(e->animation != animation) {
+        e->animation = animation;
+        e->frame = 0;
+        e->animation_timer = enemy_defs[e->type].animation[animation].animation_timer;
+    }
+}
+
+static bool spawn_enemy(uint8_t type, uint8_t index) {
+    const struct EnemyDef *def = &enemy_defs[type];
+    struct Enemy *e = NULL;
+    for(uint8_t i = 0; i < MAX_ENEMIES; i++) {
+        if(enemies[i].type == ENEMY_TYPE_NONE) {
+            e = &enemies[i];
+            break;
+        }
+    }
+    if(!e) return false;
+
+    // Enter from just off-screen, alternating sides and retrying where a wall is in the way
+    for(uint8_t attempt = 0; attempt < 4; attempt++) {
+        bool right = ((index + attempt) & 1) == 0;
+        int x = right ? x_scroll + SCREEN_WIDTH + def->half_width + 2 : x_scroll - def->half_width - 2;
+        int y = player.y + (rand() % 5 - 2) * 8;
+        if(enemy_collides(def, x, y)) continue;
+
+        memset(e, 0, sizeof(*e));
+        e->type = type;
+        e->x = x;
+        e->y = y;
+        e->health = def->health;
+        e->facing_right = x < player.x;
+        e->animation = ENEMY_ANIMATION_WALK;
+        e->animation_timer = def->animation[ENEMY_ANIMATION_WALK].animation_timer;
+        return true;
+    }
+    return false;
+}
+
+// Step one pixel at a time so enemies stop flush against walls
+static void move_enemy(struct Enemy *e, const struct EnemyDef *def) {
+    e->sx += e->vx;
+    int dx = e->sx / SUBPIXEL;
+    e->sx -= dx * SUBPIXEL;
+    int step = dx > 0 ? 1 : -1;
+    for(; dx != 0; dx -= step) {
+        if(enemy_collides(def, e->x + step, e->y)) {
+            e->sx = 0;
+            break;
+        }
+        e->x += step;
+    }
+
+    e->sy += e->vy;
+    int dy = e->sy / SUBPIXEL;
+    e->sy -= dy * SUBPIXEL;
+    step = dy > 0 ? 1 : -1;
+    for(; dy != 0; dy -= step) {
+        if(enemy_collides(def, e->x, e->y + step)) {
+            e->sy = 0;
+            break;
+        }
+        e->y += step;
+    }
+}
+
+static bool enemy_touches_player(const struct Enemy *e, const struct EnemyDef *def) {
+    int half = hitbox_half_width();
+    int height = player_hitbox_height();
+    return e->x - def->half_width < player.x + half && e->x + def->half_width > player.x - half &&
+           e->y - def->hitbox_height < player.y && e->y > player.y - height;
+}
+
+static void hurt_player(uint8_t damage) {
+    player.health -= damage;
+    if(player.health < 0) player.health = 0;
+    spawn_damage(player.x, player.y - TILE_SIZE);
+}
+
+static void update_enemy(struct Enemy *e, uint8_t index) {
+    const struct EnemyDef *def = &enemy_defs[e->type];
+    // Spread enemies over a few rows so they don't stack on one spot
+    int dx = player.x - e->x;
+    int dy = player.y + ((index % 3) - 1) * 4 - e->y;
+
+    if(e->cooldown) e->cooldown--;
+    if(e->attack_timer && --e->attack_timer == 0) {
+        set_enemy_animation(e, ENEMY_ANIMATION_WALK);
+    }
+
+    if(dx != 0) e->facing_right = dx > 0;
+    if(e->backoff_timer) {
+        e->backoff_timer--;
+        e->vx = dx > 0 ? -def->speed : def->speed;
+        e->vy = 0;
+    } else {
+        e->vx = dx > ENEMY_DEADZONE ? def->speed : (dx < -ENEMY_DEADZONE ? -def->speed : 0);
+        e->vy = dy > ENEMY_DEADZONE ? def->speed : (dy < -ENEMY_DEADZONE ? -def->speed : 0);
+    }
+    move_enemy(e, def);
+
+    if(!e->cooldown && player.health > 0 && enemy_touches_player(e, def)) {
+        hurt_player(def->damage);
+        e->cooldown = def->cooldown;
+        e->backoff_timer = def->backoff;
+        e->attack_timer = ENEMY_ATTACK_FRAMES;
+        set_enemy_animation(e, ENEMY_ANIMATION_ATTACK);
+    }
+
+    if(e->animation_timer > 0) {
+        e->animation_timer -= FRAME_MS;
+        if(e->animation_timer <= 0) {
+            const struct Animation *anim = &def->animation[e->animation];
+            e->animation_timer = anim->animation_timer;
+            e->frame = (e->frame + 1) % anim->frame_count;
+        }
+    }
+}
+
+static void update_waves(void) {
+    if(!wave_active) {
+        if(current_wave < MAX_WAVES && player.x / TILE_SIZE >= enemyWaves[current_wave].x_trigger) {
+            wave_active = true;
+            wave_spawned = 0;
+            wave_timer = 0;
+        }
+        return;
+    }
+
+    const struct EnemyWave *wave = &enemyWaves[current_wave];
+    if(wave_spawned < wave->enemy_count) {
+        if(wave_timer > FRAME_MS) {
+            wave_timer -= FRAME_MS;
+        } else if(spawn_enemy(wave->enemy_type, wave_spawned)) {
+            wave_spawned++;
+            wave_timer = WAVE_SPAWN_INTERVAL;
+        }
+        return;
+    }
+
+    // Everything has spawned; the wave is over once the last enemy is defeated
+    for(uint8_t i = 0; i < MAX_ENEMIES; i++) {
+        if(enemies[i].type != ENEMY_TYPE_NONE) return;
+    }
+    wave_active = false;
+    current_wave++;
+}
+
+static void update_enemies(void) {
+    update_waves();
+    for(uint8_t i = 0; i < MAX_ENEMIES; i++) {
+        if(enemies[i].type != ENEMY_TYPE_NONE) update_enemy(&enemies[i], i);
+    }
+}
+
+// Damages every enemy whose hitbox overlaps the (inclusive) rectangle
+static void attack_enemies(int x0, int y0, int x1, int y1) {
+    for(uint8_t i = 0; i < MAX_ENEMIES; i++) {
+        struct Enemy *e = &enemies[i];
+        if(e->type == ENEMY_TYPE_NONE) continue;
+        const struct EnemyDef *def = &enemy_defs[e->type];
+        if(e->x - def->half_width > x1 || e->x + def->half_width - 1 < x0 ||
+           e->y - def->hitbox_height > y1 || e->y - 1 < y0) continue;
+
+        spawn_damage(e->x, e->y - def->hitbox_height);
+        e->health -= PLAYER_ATTACK_DAMAGE;
+        if(e->health <= 0) {
+            e->type = ENEMY_TYPE_NONE;
+            player.score += ENEMY_SCORE;
+        }
+    }
+}
+
+static void render_enemies(void) {
+    for(uint8_t i = 0; i < MAX_ENEMIES; i++) {
+        const struct Enemy *e = &enemies[i];
+        if(e->type == ENEMY_TYPE_NONE) continue;
+        const struct Frame* f = &enemy_defs[e->type].animation[e->animation].frames[e->frame];
+        bool flip = e->facing_right == ENEMY_ART_FACES_LEFT;
+        int left = e->x - x_scroll - f->width * 8;
+        int top = e->y - f->height * 16;
+        if(left + f->width * 16 <= 0 || left >= SCREEN_WIDTH) continue;
+        for(uint8_t row = 0; row < f->height; row++) {
+            for(uint8_t col = 0; col < f->width; col++) {
+                uint8_t tile = f->base + (row << 4) + (flip ? f->width - 1 - col : col);
+                add_sprite(left + (col << 4), top + (row << 4), tile, flip ? SPRITE_FLAG_FLIP_X : 0);
+            }
+        }
+    }
 }
 
 static uint8_t fg_coll(int tx, int ty) {
@@ -434,6 +695,8 @@ static void player_attack(void) {
     if(x1 >= MAP_WIDTH * TILE_SIZE) x1 = MAP_WIDTH * TILE_SIZE - 1;
     if(y1 >= MAP_HEIGHT * TILE_SIZE) y1 = MAP_HEIGHT * TILE_SIZE - 1;
 
+    attack_enemies(x0, y0, x1, y1);
+
     int tx0 = x0 / TILE_SIZE, tx1 = x1 / TILE_SIZE;
     int ty0 = y0 / TILE_SIZE, ty1 = y1 / TILE_SIZE;
     int step = player.facing_right ? 1 : -1;
@@ -447,6 +710,11 @@ static void player_attack(void) {
 
 void game_init() {
     memset(item_durability, ITEM_DURABILITY, sizeof(item_durability));
+    memset(enemies, 0, sizeof(enemies));
+    current_wave = 0;
+    wave_spawned = 0;
+    wave_active = false;
+    wave_timer = 0;
     // Initialize player
     player.x = 32;
     player.y = 240-32;
@@ -544,6 +812,7 @@ void game_update() {
             player.frame = (player.frame + 1) % player_animation[player.animation].frame_count;
         }
     }
+    update_enemies();
     update_particles();
 }
 
@@ -561,6 +830,7 @@ void game_render() {
             add_sprite(left + (col << 4), top + (row << 4), tile, flip ? SPRITE_FLAG_FLIP_X : 0);
         }
     }
+    render_enemies();
     // Add HUD sprites:
     for(uint8_t i=0;i<4;i++) {
         add_sprite((uint16_t)i<<4,240-16,'@',0);

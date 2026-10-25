@@ -52,12 +52,13 @@ obj/%.rel: src/%.asm
 	$(AS) $@ $<
 
 img/%.zts: img/%.gif
-	python3 $(ZVB_SDK_PATH)/tools/zeal2gif/gif2zeal.py -z lz -i $<
+	python3 $(ZVB_SDK_PATH)/tools/zeal2gif/gif2zeal.py -i $<
+	-$(CP) $(call FIX_PATH,$(IMG)) $(call FIX_PATH,bin/spookyst.zts)
 
 map/bg.ztm: map/street.tmx
 	python3 $(ZVB_SDK_PATH)/tools/tiled2zeal/tiled2zeal.py -i $< -o $@ -l 1
 map/fg.ztm: map/street.tmx
-	$(ZVB_SDK_PATH)/tools/tiled2zeal/tiled2zeal.py -i $< -o $@ -l 2
+	python3 $(ZVB_SDK_PATH)/tools/tiled2zeal/tiled2zeal.py -i $< -o $@ -l 2
 
 
 obj/game.rel: src/game.c src/game.h src/main.h # map/tutorial_map.h
@@ -69,7 +70,7 @@ clean:
 	-$(RM) $(call FIX_PATH,$(OBJ))
 	-$(RM) $(call FIX_PATH,$(BIN))
 	-$(RM) $(call FIX_PATH,obj/*.lst obj/*.sym obj/*.adb obj/*.asm)
-	-$(RM) $(call FIX_PATH,bin/*.ihx bin/*.noi bin/*.map bin/*.cdb)
+	-$(RM) $(call FIX_PATH,bin/*.ihx bin/*.noi bin/*.map bin/*.cdb bin/*.zts)
 
 reallyclean: clean
 	-$(RM) $(call FIX_PATH,img/*.zts img/*.ztp map/*.ztm)

@@ -41,7 +41,7 @@ gfx_sprite sprites[128];
 #define STREET_MAP_WIDTH 80
 #define STREET_MAP_HEIGHT 15
 uint8_t street_fg_map[STREET_MAP_WIDTH*STREET_MAP_HEIGHT];
-    
+
 enum GameState current_state;
 bool done;
 
@@ -67,6 +67,8 @@ void debug_logf(const char *format, ...)
 }
 
 void initialize_graphics() {
+    uint8_t scratch_buffer[4096];
+
     ser = open("#SER0",O_WRONLY);
     if (ser < 0) {
         printf("Failed to open serial port\n");
@@ -103,14 +105,38 @@ void initialize_graphics() {
         }
     }
     
-    gfx_tileset_options options0 = {TILESET_COMP_LZ, TILESET_TILES_BASE*256, TILESET_PALETTE_BASE, 0};
     gfx_palette_load(&ctx, tileset_palette, tileset_palette_len, TILESET_PALETTE_BASE);
     const uint16_t solid_color[2]={RGB888_TO_RGB565(255,0,0),RGB888_TO_RGB565(128,0,0)}; // Red and Dark Red
     gfx_palette_load(&ctx,solid_color,4,254);
     const uint16_t black[1]={0x0};
     gfx_palette_load(&ctx,black,2,0);
     debug_log("Loading tiles");
-    gfx_tileset_load(&ctx, tileset_tiles, tileset_tiles_len, &options0);
+    zos_dev_t zts = open("spookyst.zts", O_RDONLY);
+    if (zts < 0) {
+        zts = open("h:/bin/spookyst.zts", O_RDONLY);
+        if (zts < 0) {
+            debug_log("Failed to open tileset file spookyst.zts");
+
+            zvb_sound_reset();
+            ioctl(DEV_STDOUT, CMD_RESET_SCREEN, NULL);
+            printf("Failed to open tileset file spookyst.zts\n");
+            exit(1);
+        }
+    }
+    for(uint16_t i=0;i<16;i++) {
+        uint16_t size = sizeof(scratch_buffer);
+        zos_err_t result = read(zts, scratch_buffer, &size);
+        if(result != ERR_SUCCESS) {
+            debug_log("Failed to read tileset data");
+            ioctl(DEV_STDOUT, CMD_RESET_SCREEN, NULL);
+            printf("Failed to read tileset data\n");
+            exit(2);
+        }
+        gfx_tileset_options options0 = {TILESET_COMP_NONE, i<<12, TILESET_PALETTE_BASE, 0};
+        //debug_logf("Loading tileset chunk %u with options offset %u", i, i<<12);
+        gfx_tileset_load(&ctx, scratch_buffer, sizeof(scratch_buffer), &options0);
+    }
+    close(zts);
 
     debug_log("Initalized.");
     gfx_initialize(ZVB_CTRL_VID_MODE_GFX_320_8BIT, &ctx);

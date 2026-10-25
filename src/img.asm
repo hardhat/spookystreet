@@ -23,7 +23,7 @@ _tileset_palette_len:
 _tileset_tiles:
     .dw _tileset_tiles_data
 _tileset_tiles_data:
-    .incbin "img/tileset.zts"
+    ;.incbin "img/tileset.zts"
 _tileset_tiles_len:
     .dw .-_tileset_tiles_data
 _street_bg_tilemap_data:
