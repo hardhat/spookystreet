@@ -61,7 +61,7 @@ map/fg.ztm: map/street.tmx
 	python3 $(ZVB_SDK_PATH)/tools/tiled2zeal/tiled2zeal.py -i $< -o $@ -l 2
 
 
-obj/game.rel: src/game.c src/game.h src/main.h # map/tutorial_map.h
+obj/game.rel: src/game.c src/game.h src/main.h src/sin88.h # map/tutorial_map.h
 obj/menu.rel: src/menu.c src/menu.h src/game.h
 obj/main.rel: src/main.c src/game.h src/menu.h src/img.h img/title.xbm
 obj/img.rel: src/img.asm $(IMG) $(MAP)

@@ -9,8 +9,11 @@
 #include "main.h"
 #include "game.h"
 #include "img.h"
+#include "sin88.h"
 
+#ifdef __SDCC_VERSION_MAJOR
 #include <zvb_hardware.h>
+#endif
 
 #define MAP_WIDTH STREET_MAP_WIDTH    // In tiles
 #define MAP_HEIGHT STREET_MAP_HEIGHT // In tiles
@@ -246,6 +249,10 @@ struct Enemy enemies[MAX_ENEMIES];
 #define ENEMY_ATTACK_FRAMES 16
 #define ENEMY_ART_FACES_LEFT true
 #define PLAYER_ATTACK_DAMAGE 10
+
+#define GHOST_ORBIT_MIN_FRAMES ((500 + FRAME_MS - 1) / FRAME_MS)
+#define GHOST_ORBIT_MAX_FRAMES (1500 / FRAME_MS)
+#define GHOST_ORBIT_PHASE_STEP 196
 
 struct EnemyDef {
     const struct Animation* animation;
@@ -502,6 +509,76 @@ static void hurt_player(uint8_t damage) {
     spawn_damage(player.x, player.y - TILE_SIZE);
 }
 
+static bool ghost_target_in_bounds(const struct EnemyDef *def, int x, int y) {
+    return x >= def->half_width && x <= MAP_WIDTH * TILE_SIZE - def->half_width &&
+           y >= def->hitbox_height && y <= MAP_HEIGHT * TILE_SIZE;
+}
+
+static void start_ghost_retreat(struct Enemy *e, const struct EnemyDef *def) {
+    int dx = e->x - player.x;
+    int dy = e->y - player.y;
+    int ax = abs(dx);
+    int ay = abs(dy);
+    uint8_t angle;
+    if(ax > (ay << 1)) {
+        angle = dx > 0 ? 64 : 192;
+    } else if(ay > (ax << 1)) {
+        angle = dy > 0 ? 0 : 128;
+    } else {
+        angle = dx >= 0 ? (dy >= 0 ? 32 : 96) : (dy >= 0 ? 224 : 160);
+    }
+    for(uint8_t attempt = 0; attempt < 8; attempt++) {
+        if(ghost_target_in_bounds(def, player.x + ghost_offset_x(angle),
+                                 player.y + ghost_offset_y(angle))) break;
+        angle += 32;
+    }
+    uint8_t duration;
+    do {
+        duration = rand() & 63;
+    } while(duration > GHOST_ORBIT_MAX_FRAMES - GHOST_ORBIT_MIN_FRAMES);
+    e->ghost_movement = GHOST_RETREAT;
+    e->orbit_phase = (uint16_t)angle << 8;
+    e->orbit_direction = (rand() & 1) ? 1 : -1;
+    e->orbit_timer = GHOST_ORBIT_MIN_FRAMES + duration;
+}
+
+static int ghost_target_velocity(int delta, int remainder, uint8_t speed) {
+    if(delta > 2) return speed;
+    if(delta < -2) return -speed;
+    int velocity = (delta >= 0 ? delta << 4 : -((-delta) << 4)) - remainder;
+    if(velocity > speed) return speed;
+    if(velocity < -speed) return -speed;
+    return velocity;
+}
+
+static void update_ghost_backoff(struct Enemy *e, const struct EnemyDef *def) {
+    uint16_t phase = e->orbit_phase;
+    if(e->ghost_movement == GHOST_ORBIT) {
+        phase += e->orbit_direction > 0 ? GHOST_ORBIT_PHASE_STEP : -GHOST_ORBIT_PHASE_STEP;
+        if(!ghost_target_in_bounds(def, player.x + ghost_offset_x(phase >> 8),
+                                  player.y + ghost_offset_y(phase >> 8))) {
+            e->orbit_direction = -e->orbit_direction;
+            phase = e->orbit_phase;
+            phase += e->orbit_direction > 0 ? GHOST_ORBIT_PHASE_STEP : -GHOST_ORBIT_PHASE_STEP;
+        }
+        e->orbit_phase = phase;
+        if(--e->orbit_timer == 0) e->ghost_movement = GHOST_APPROACH;
+    }
+    int target_x = player.x + ghost_offset_x(phase >> 8);
+    int target_y = player.y + ghost_offset_y(phase >> 8);
+    if(target_x < def->half_width) target_x = def->half_width;
+    if(target_x > MAP_WIDTH * TILE_SIZE - def->half_width) target_x = MAP_WIDTH * TILE_SIZE - def->half_width;
+    if(target_y < def->hitbox_height) target_y = def->hitbox_height;
+    if(target_y > MAP_HEIGHT * TILE_SIZE) target_y = MAP_HEIGHT * TILE_SIZE;
+    int dx = target_x - e->x;
+    int dy = target_y - e->y;
+    e->vx = ghost_target_velocity(dx, e->sx, def->speed);
+    e->vy = ghost_target_velocity(dy, e->sy, def->speed);
+    if(e->ghost_movement == GHOST_RETREAT && abs(dx) <= 2 && abs(dy) <= 2) {
+        e->ghost_movement = GHOST_ORBIT;
+    }
+}
+
 static void update_enemy(struct Enemy *e, uint8_t index) {
     const struct EnemyDef *def = &enemy_defs[e->type];
     // Spread enemies over a few rows so they don't stack on one spot
@@ -514,7 +591,10 @@ static void update_enemy(struct Enemy *e, uint8_t index) {
     }
 
     if(dx != 0) e->facing_right = dx > 0;
-    if(e->backoff_timer) {
+    bool ghost_backoff = e->type == ENEMY_TYPE_GHOST && e->ghost_movement != GHOST_APPROACH;
+    if(ghost_backoff) {
+        update_ghost_backoff(e, def);
+    } else if(e->backoff_timer) {
         e->backoff_timer--;
         e->vx = dx > 0 ? -def->speed : def->speed;
         e->vy = 0;
@@ -524,12 +604,13 @@ static void update_enemy(struct Enemy *e, uint8_t index) {
     }
     move_enemy(e, def);
 
-    if(!e->cooldown && player.health > 0 && enemy_touches_player(e, def)) {
+    if(!ghost_backoff && !e->cooldown && player.health > 0 && enemy_touches_player(e, def)) {
         hurt_player(def->damage);
         e->cooldown = def->cooldown;
         e->backoff_timer = def->backoff;
         e->attack_timer = ENEMY_ATTACK_FRAMES;
         set_enemy_animation(e, ENEMY_ANIMATION_ATTACK);
+        if(e->type == ENEMY_TYPE_GHOST) start_ghost_retreat(e, def);
     }
 
     if(e->animation_timer > 0) {

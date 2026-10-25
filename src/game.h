@@ -42,6 +42,12 @@ enum EnemyType {
     ENEMY_TYPE_HAND,
 };
 
+enum GhostMovement {
+    GHOST_APPROACH,
+    GHOST_RETREAT,
+    GHOST_ORBIT,
+};
+
 struct Enemy {
     uint8_t type; // type of the enemy (e.g., rat, ghost, hand or none)
     int x;
@@ -57,6 +63,10 @@ struct Enemy {
     uint8_t cooldown; // frames until this enemy can attack again
     uint8_t backoff_timer; // frames left retreating after an attack
     uint8_t attack_timer; // frames left for the attack animation
+    uint8_t ghost_movement;
+    uint16_t orbit_phase;
+    int8_t orbit_direction;
+    uint8_t orbit_timer;
 };
 
 struct Particle {
