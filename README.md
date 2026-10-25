@@ -48,3 +48,9 @@ by Hardhat
 Just drop spookyst.bin and spookyst.zts in any directory, then cd to that directory and start ./spookyst.bin
 
 Requires a base Zeal 8-bit Computer and Zeal VideoBoard with Zeal OS 0.7 or later.
+
+## Game play
+
+<img src="sample1.png" alt="Battle rats">
+
+<img src="sample2.png" alt="Ghosts are swarming on the street">
