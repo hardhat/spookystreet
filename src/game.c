@@ -832,8 +832,9 @@ void game_render() {
     }
     render_enemies();
     // Add HUD sprites:
-    for(uint8_t i=0;i<4;i++) {
-        add_sprite((uint16_t)i<<4,240-16,'@',0);
+    for(uint16_t i=0;i<8;i++) {
+        bool health = i*100/8 < player.health;
+        add_sprite((uint16_t)i<<4,240-16,health ? '@' : '#',0);
     }
     char buf[16];
     sprintf(buf,"%05d",player.score);
