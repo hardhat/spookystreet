@@ -106,7 +106,7 @@ void initialize_graphics() {
     }
     
     gfx_palette_load(&ctx, tileset_palette, tileset_palette_len, TILESET_PALETTE_BASE);
-    const uint16_t solid_color[2]={RGB888_TO_RGB565(255,0,0),RGB888_TO_RGB565(128,0,0)}; // Red and Dark Red
+    const uint16_t solid_color[2]={(uint16_t)RGB888_TO_RGB565(255,0,0),(uint16_t)RGB888_TO_RGB565(128,0,0)}; // Red and Dark Red
     gfx_palette_load(&ctx,solid_color,4,254);
     const uint16_t black[1]={0x0};
     gfx_palette_load(&ctx,black,2,0);
