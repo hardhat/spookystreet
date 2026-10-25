@@ -318,6 +318,17 @@ void process_input(void)
 #endif
 }
 
+void reset_fg_map(void) {
+        for(int y = 0; y < STREET_MAP_HEIGHT; y++) {
+        for(int x = 0; x < STREET_MAP_WIDTH; x++) {
+            uint8_t cell = street_fg_tilemap[y * STREET_MAP_WIDTH + x];
+            if(cell == 255) cell=0;
+            street_fg_map[y * STREET_MAP_WIDTH + x] = cell;
+        }
+    }
+    show_map1((uint8_t *)street_fg_map, STREET_MAP_WIDTH, STREET_MAP_HEIGHT);
+}
+
 
 int main(int argc, char *argv[]) {
     (void)argc;
@@ -332,14 +343,7 @@ int main(int argc, char *argv[]) {
     ioctl(DEV_STDIN, KB_CMD_SET_MODE, arg);
 
     show_map((uint8_t *)street_bg_tilemap, STREET_MAP_WIDTH, STREET_MAP_HEIGHT);
-    for(int y = 0; y < STREET_MAP_HEIGHT; y++) {
-        for(int x = 0; x < STREET_MAP_WIDTH; x++) {
-            uint8_t cell = street_fg_tilemap[y * STREET_MAP_WIDTH + x];
-            if(cell == 255) cell=0;
-            street_fg_map[y * STREET_MAP_WIDTH + x] = cell;
-        }
-    }
-    show_map1((uint8_t *)street_fg_map, STREET_MAP_WIDTH, STREET_MAP_HEIGHT);
+    reset_fg_map();
 
     // Main loop
     while (!done) {

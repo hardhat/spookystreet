@@ -70,7 +70,7 @@ clean:
 	-$(RM) $(call FIX_PATH,$(OBJ))
 	-$(RM) $(call FIX_PATH,$(BIN))
 	-$(RM) $(call FIX_PATH,obj/*.lst obj/*.sym obj/*.adb obj/*.asm)
-	-$(RM) $(call FIX_PATH,bin/*.ihx bin/*.noi bin/*.map bin/*.cdb bin/*.zts)
+	-$(RM) $(call FIX_PATH,bin/*.ihx bin/*.noi bin/*.map bin/*.cdb)
 
 reallyclean: clean
-	-$(RM) $(call FIX_PATH,img/*.zts img/*.ztp map/*.ztm)
+	-$(RM) $(call FIX_PATH,img/*.zts img/*.ztp map/*.ztm bin/*.zts)

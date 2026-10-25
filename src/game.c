@@ -711,6 +711,7 @@ static void player_attack(void) {
 void game_init() {
     memset(item_durability, ITEM_DURABILITY, sizeof(item_durability));
     memset(enemies, 0, sizeof(enemies));
+    reset_fg_map();
     current_wave = 0;
     wave_spawned = 0;
     wave_active = false;
@@ -842,6 +843,28 @@ void game_render() {
         add_sprite(320+((i-5)<<4),240-16,buf[i],0);
     }
 
+    // Wave:
+    if(wave_active) {
+        add_sprite(0,0,0x54,0);
+        add_sprite(16,0,0x55,0);
+        add_sprite(32,0,0x56,0);
+        add_sprite(48,0,current_wave+1+'0',0);
+    }
+
+    if(current_wave >= MAX_WAVES) {
+        // You Win message
+        for(int i = 0; i < 4; i++) {
+            add_sprite(64 + (i << 4), 120, 0x46 + i, 0);
+        }
+    }
+
+    if(player.health == 0) {
+        // Game Over message
+        for(int i = 0; i < 5; i++) {
+            add_sprite(64 + (i << 4), 64, 0x41 + i, 0);
+        }
+    }
+
     // Render particles
     for(uint8_t i = 0; i < MAX_PARTICLES; i++) {
         if(particles[i].active) {
@@ -859,6 +882,18 @@ void game_render() {
 }
 
 void game_handle_input(uint8_t input, bool down) {
+    if(input == INPUT_START) {
+        game_init();
+        return;
+    }
+    if(player.health == 0) {
+        held_down = false;
+        held_up = false;
+        held_left = false;
+        held_right = false;
+        held_attack = false;
+        return; // Ignore input if player is dead
+    }
     switch(input) {
         case INPUT_DOWN:
             held_down = down;

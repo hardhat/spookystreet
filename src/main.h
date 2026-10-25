@@ -40,6 +40,7 @@ extern enum GameState current_state;
 #define STREET_MAP_WIDTH 80
 #define STREET_MAP_HEIGHT 15
 extern uint8_t street_fg_map[STREET_MAP_WIDTH*STREET_MAP_HEIGHT];
+void reset_fg_map(void);
 
 #define PARTICLE_DAMAGE 0x22
 
