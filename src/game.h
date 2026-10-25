@@ -30,6 +30,31 @@ struct Player {
     int animation_timer; // timer for animation transitions
 };
 
+enum EnemyAnimation {
+    ENEMY_ANIMATION_WALK,
+    ENEMY_ANIMATION_ATTACK,
+};
+
+enum EnemyType {
+    ENEMY_TYPE_NONE, // default type for uninitialized enemies
+    ENEMY_TYPE_RAT,
+    ENEMY_TYPE_GHOST,
+    ENEMY_TYPE_HAND,
+};
+
+struct Enemy {
+    uint8_t type; // type of the enemy (e.g., rat, ghost, hand or none)
+    int x;
+    int y;
+    int vx, vy; // velocity in subpixels (1/16 pixel) per frame
+    int sx, sy; // subpixel remainder of position
+    bool on_ground;
+    enum EnemyAnimation animation;
+    int frame; // current frame of the animation
+    int animation_timer; // timer for animation transitions
+    int health;
+};
+
 struct Particle {
     bool active; // whether the particle is active
     uint8_t type; // type of the particle (e.g., smoke, spark)

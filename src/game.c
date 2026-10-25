@@ -123,7 +123,68 @@ const struct Frame walk_frames[] = {
     { .base = 0xe3, .width = 1, .height = 2 },
     { .base = 0xe4, .width = 1, .height = 2 },
 };
-    
+
+const struct Frame rat_walk_frames[] = {
+    { .base = 0x00, .width = 2, .height = 2 },
+    { .base = 0x02, .width = 2, .height = 2 },
+    { .base = 0x04, .width = 2, .height = 2 },
+};
+
+const struct Frame rat_attack_frames[] = {
+    { .base = 0x06, .width = 2, .height = 2 },
+    { .base = 0x08, .width = 2, .height = 2 },
+    { .base = 0x08, .width = 2, .height = 2 },
+};
+
+const struct Frame ghost_walk_frames[] = {
+    { .base = 0x0A, .width = 2, .height = 2 },
+    { .base = 0x0A, .width = 2, .height = 2 },
+    { .base = 0x0A, .width = 2, .height = 2 },
+};
+
+const struct Frame ghost_attack_frames[] = {
+    { .base = 0x0A, .width = 2, .height = 2 },
+    { .base = 0x0A, .width = 2, .height = 2 },
+    { .base = 0x0A, .width = 2, .height = 2 },
+};
+
+
+const struct Frame hand_walk_frames[] = {
+    { .base = 0x0C, .width = 4, .height = 3 },
+    { .base = 0x3C, .width = 4, .height = 3 },
+};
+
+const struct Frame hand_attack_frames[] = {
+    { .base = 0x60, .width = 4, .height = 3 },
+    { .base = 0x60, .width = 4, .height = 3 },
+};
+
+const struct Animation hand_animation[] = {
+    [ENEMY_ANIMATION_WALK] = {
+        .frame_count = 2,
+        .frames = hand_walk_frames,
+        .animation_timer = 64 // example value in ms
+    },
+    [ENEMY_ANIMATION_ATTACK] = {
+        .frame_count = 2,
+        .frames = hand_attack_frames,
+        .animation_timer = 128 // example value in ms
+    },
+};
+
+const struct Animation ghost_animation[] = {
+    [ENEMY_ANIMATION_WALK] = {
+        .frame_count = 3,
+        .frames = ghost_walk_frames,
+        .animation_timer = 64 // example value in ms
+    },
+    [ENEMY_ANIMATION_ATTACK] = {
+        .frame_count = 3,
+        .frames = ghost_attack_frames,
+        .animation_timer = 128 // example value in ms
+    },
+};
+
 const struct Animation player_animation[] = {
     [PLAYER_ANIMATION_IDLE] = {
         .frame_count = 2,
@@ -140,7 +201,43 @@ const struct Animation player_animation[] = {
         .frames = attack_frames,
         .animation_timer = 128 // example value in ms
     },
-}; 
+};
+
+const struct Animation rat_animation[] = {
+    [ENEMY_ANIMATION_WALK] = {
+        .frame_count = 3,
+        .frames = rat_walk_frames,
+        .animation_timer = 64 // example value in ms
+    },
+    [ENEMY_ANIMATION_ATTACK] = {
+        .frame_count = 3,
+        .frames = rat_attack_frames,
+        .animation_timer = 128 // example value in ms
+    },
+};
+
+
+#define MAX_WAVES 7
+struct EnemyWave {
+    uint8_t enemy_count;
+    uint8_t enemy_type;
+    uint8_t x_trigger;
+} enemyWaves[MAX_WAVES] = {
+    { .enemy_count = 4, .enemy_type = ENEMY_TYPE_RAT, .x_trigger = 10 },
+    { .enemy_count = 3, .enemy_type = ENEMY_TYPE_GHOST, .x_trigger = 20 },
+    { .enemy_count = 8, .enemy_type = ENEMY_TYPE_RAT, .x_trigger = 30 },
+    { .enemy_count = 5, .enemy_type = ENEMY_TYPE_GHOST, .x_trigger = 40 },
+    { .enemy_count = 12, .enemy_type = ENEMY_TYPE_RAT, .x_trigger = 50 },
+    { .enemy_count = 8, .enemy_type = ENEMY_TYPE_GHOST, .x_trigger = 60 },
+    { .enemy_count = 1, .enemy_type = ENEMY_TYPE_HAND, .x_trigger = 70 },
+};
+uint8_t current_wave;
+uint8_t wave_spawned;
+bool wave_active;
+uint16_t wave_timer;    // Timer for tracking spawn timing of the current wave
+
+#define MAX_ENEMIES 8
+struct Enemy enemies[MAX_ENEMIES];
 
 bool held_left, held_up, held_right, held_down, held_attack;
 
