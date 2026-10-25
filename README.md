@@ -51,6 +51,6 @@ Requires a base Zeal 8-bit Computer and Zeal VideoBoard with Zeal OS 0.7 or late
 
 ## Game play
 
-<img src="sample1.png" alt="Battle rats">
+<img src="screenshot/sample1.png" alt="Battle rats">
 
-<img src="sample2.png" alt="Ghosts are swarming on the street">
+<img src="screenshot/sample2.png" alt="Ghosts are swarming on the street">
