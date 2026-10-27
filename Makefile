@@ -4,12 +4,12 @@ BIN=bin/spookyst.bin
 OBJ=obj/main.rel obj/game.rel obj/menu.rel obj/img.rel
 IMG=img/tileset.zts
 CC=sdcc
-CFLAGS=-mz80 --std-c2x -c -I $(ZOS_PATH)/kernel_headers/sdcc/include/ -I $(ZVB_SDK_PATH)/include --codeseg TEXT --debug --opt-code-size
+CFLAGS=-mz80 --std-c2x -c -I $(ZOS_PATH)/sdk/sdcc/include/ -I $(ZVB_SDK_PATH)/include --codeseg TEXT --debug --opt-code-size
 AS=sdasz80 -o -l -s
 OBJCOPY=objcopy
 LD=sdldz80
 MAP=map/bg.ztm map/fg.ztm
-LDFLAGS=-n -y -mjwx -i -b _HEADER=0x4000 -k $(ZOS_PATH)/kernel_headers/sdcc/lib -l z80 $(ZOS_LDFLAGS)
+LDFLAGS=-n -y -mjwx -i -b _HEADER=0x4000 -k $(ZOS_PATH)/sdk/sdcc/lib -l z80 $(ZOS_LDFLAGS)
 ZOS_LIBS=-k $(ZVB_SDK_PATH)/lib -l zvb_sound -l zvb_gfx
 # 1. Detect the operating system
 ifeq ($(OS),Windows_NT)
@@ -41,7 +41,7 @@ init:
 
 $(BIN): $(OBJ)
 	$(LD) $(LDFLAGS) -o $(BIN:.bin=.ihx) \
-	../Zeal-8-bit-OS/kernel_headers/sdcc/bin/zos_crt0.rel $(OBJ) $(ZOS_LIBS)
+	../Zeal-8-bit-OS/sdk/sdcc/bin/zos_crt0.rel $(OBJ) $(ZOS_LIBS)
 	$(OBJCOPY) --input-target=ihex --output-target binary $(BIN:.bin=.ihx) $(BIN)
 	-$(CP) $(call FIX_PATH,$(BIN)) s
 
